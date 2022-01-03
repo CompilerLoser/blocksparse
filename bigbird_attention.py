@@ -1,25 +1,99 @@
 import sys
 import numpy as np
-from attention import get_callback
+import time
 
 from blocksparse.transformer import BlocksparseTransformer
-#from blocksparse import BlocksparseTransformer
 
-batch_size = 16
-num_attention_heads = 1
-size_per_head = 512
-from_seq_length = 4096
-to_seq_length = 4096
+def bigbird_block_rand_mask(from_seq_length,
+                            to_seq_length,
+                            from_block_size,
+                            to_block_size,
+                            num_rand_blocks,
+                            last_idx=-1):
+  """Create adjacency list of random attention.
 
-num_rand_blocks = 3
-from_block_size = 64
-to_block_size = 64
+  Args:
+    from_seq_length: int. length of from sequence.
+    to_seq_length: int. length of to sequence.
+    from_block_size: int. size of block in from sequence.
+    to_block_size: int. size of block in to sequence.
+    num_rand_blocks: int. Number of random chunks per row.
+    last_idx: if -1 then num_rand_blocks blocks chosen anywhere in to sequence,
+      if positive then num_rand_blocks blocks choosen only upto last_idx.
 
-blocksparse_bs = 32
+  Returns:
+    adjacency list of size from_seq_length//from_block_size-2 by num_rand_blocks
+  """
+  rand_attn = np.zeros(
+      (from_seq_length // from_block_size - 2, num_rand_blocks), dtype=np.int32)
+  middle_seq = np.arange(1, to_seq_length // to_block_size - 1, dtype=np.int32)
+  last = to_seq_length // to_block_size - 1
+  if last_idx > (2 * to_block_size):
+    last = (last_idx // to_block_size) - 1
 
+  r = num_rand_blocks  # shorthand
+  for i in range(1, from_seq_length // from_block_size-1):
+    start = i-2
+    end = i
+    if i == 1:
+      rand_attn[i-1, :] = np.random.permutation(middle_seq[2:last])[:r]
+    elif i == 2:
+      rand_attn[i-1, :] = np.random.permutation(middle_seq[3:last])[:r]
+    elif i == from_seq_length // from_block_size - 3:
+      rand_attn[i-1, :] = np.random.permutation(middle_seq[:last])[:r]
+      # Missing -3: should have been sliced till last-3
+    elif i == from_seq_length // from_block_size - 2:
+      rand_attn[i-1, :] = np.random.permutation(middle_seq[:last])[:r]
+      # Missing -4: should have been sliced till last-4
+    else:
+      if start > last:
+        start = last
+        rand_attn[i-1, :] = np.random.permutation(middle_seq[:start])[:r]
+      elif (end+1) == last:
+        rand_attn[i-1, :] = np.random.permutation(middle_seq[:start])[:r]
+      else:
+        rand_attn[i-1, :] = np.random.permutation(
+            np.concatenate((middle_seq[:start], middle_seq[end+1:last])))[:r]
+  return rand_attn
+
+
+def generate_rand_attn_list(from_seq_length, from_block_size,
+         to_block_size, num_rand_blocks, num_attention_heads):
+    # old plans used in paper
+    if from_seq_length in [1024, 2048, 3072, 4096]:
+        rand_attn = [
+            bigbird_block_rand_mask(  # pylint: disable=g-complex-comprehension
+              from_seq_length, from_seq_length,# ? 
+              from_block_size, to_block_size, num_rand_blocks,
+              last_idx=from_seq_length
+            )[:(from_seq_length // from_block_size - 2)]
+            for _ in range(num_attention_heads)
+        ]
+    else:
+        raise NotImplementedError
+    rand_attn = np.stack(rand_attn, axis=0)
+    return tf.constant(rand_attn, dtype=tf.int32)
+
+"""
 def bigbird_layout(from_seq_length, to_seq_length, from_block_size, 
                     to_block_size, num_rand_blocks, num_attention_heads,
-                    blocksparse_bs):
+                    blocksparse_bs, rand_attn):
+    assert from_seq_length == to_seq_length
+    assert from_block_size == to_block_size
+    assert from_seq_length % blocksparse_bs == 0
+    blk_num = from_seq_length // blocksparse_bs
+
+    layouts = []
+    for head in range(num_attention_heads):
+        layout = np.zeros([blk_num, blk_num], dtype=np.bool)
+        for i in range(blk_num):
+            if (i) * blocksparse_bs < from_block_size - 1 \
+                or (i+1)*blocksparse_bs > (from_seq_length - from_block_size -1):
+                layout[i,:] = 1
+            else:
+                layout[i,:] = 1
+        layouts.append(layout)
+    layouts = np.array(layouts)
     
     raise NotImplementedError
 
@@ -32,16 +106,77 @@ def bigbird_callback():
         """
         raise NotImplementedError
     return mask_in_each_blocksparse_block
+"""
+
+
+def bigbird_layout_simple(rand_attn):
+    layouts = []
+    blk_num = rand_attn.shape[1] + 2
+    for h in range(rand_attn.shape[0]):
+        layout = np.zeros([blk_num, blk_num], dtype = bool)
+        for i in range(blk_num):
+            if i == 0 or i == blk_num - 1:
+                layout[i,:] = 1
+            else:
+                layout[i,0] = 1
+                layout[i,-1] = 1
+                layout[i, i-1:i+1] = 1 
+                for r in rand_attn[h, i+1, :]:
+                    layout[i, r] = 1
+        layouts.append(layout)
+    layouts = np.array(layouts)
+
+
+def bigbird_callback_simple():
+    def mask_in_each_blocksparse_block(blk_shape):
+        mask = np.ones(blk_shape, dtype=np.bool)
+        return mask
+    return mask_in_each_blocksparse_block
+
+batch_size = 16
+num_attention_heads = 1
+size_per_head = 512
+from_seq_length = 1024
+to_seq_length = 1024
+
+num_rand_blocks = 3
+from_block_size = 32
+to_block_size = 32
+
+blocksparse_bs = 32
 
 if __name__ == '__main__':
+
+    start = time.perf_counter()
+    # simple version
+    assert from_seq_length == to_seq_length
+    assert from_block_size == to_block_size
+    assert blocksparse_bs == from_block_size
+
     is_fp16 = len(sys.argv) > 1 and sys.argv[1] == 'fp16'
     dtype = tf.float16 if is_fp16 else tf.float32
+
     q = tf.random_normal(shape=[batch_size, num_attention_heads, from_seq_length, size_per_head], dtype = dtype)
     k = tf.random_normal(shape=[batch_size, num_attention_heads, to_seq_length, size_per_head], dtype = dtype)
     v = tf.random_normal(shape=[batch_size, num_attention_heads, to_seq_length, size_per_head], dtype = dtype)
 
-    layout = bigbird_layout(from_seq_length, to_seq_length, from_block_size, to_block_size,
-                            num_rand_blocks, num_attention_heads, blocksparse_bs)
+    rand_attn = generate_rand_attn_list(from_seq_length, from_block_size,
+         to_block_size, num_rand_blocks, num_attention_heads)
+
+    #layout = bigbird_layout(from_seq_length, to_seq_length, from_block_size, to_block_size, num_rand_blocks, num_attention_heads, blocksparse_bs)
+    layout = bigbird_layout_simple(rand_attn, blocksparse_bs)
+
     bst = BlocksparseTransformer(layout, block_size = blocksparse_bs, 
-                                            mask_callback=bigbird_callback(),
+                                            mask_callback=bigbird_callback_simple(),
                                             heads = num_attention_heads)
+
+    res = []
+    for batch in range(q.shape[0]):
+        w = bst.query_key_op(q[batch,:], k[batch,:])
+        scale_amount = tf.cast(1.0 / np.sqrt(size_per_head), tf.float32)
+        w = bst.masked_softmax(w, scale_amount)
+        res.append(bst.weight_value_op(w, v[batch,:]))
+
+    end = time.perf_counter()
+    print(batch_size*num_attention_heads*from_seq_length / (end - start))
+
