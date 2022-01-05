@@ -1,5 +1,12 @@
+# sparse_attention(https://github.com/openai/sparse_attention)
+# uses blocksparse to implement the three basic sparse patterns, 
+# we follow it to implement blocked attentions in bigbird.
+# For now we just consider the basic condition: the attention 
+# are blocked in a same size with blocksparse compute blocksize. 
+
 import sys
 import numpy as np
+import tensorflow as tf
 import time
 
 from blocksparse.transformer import BlocksparseTransformer
@@ -72,7 +79,7 @@ def generate_rand_attn_list(from_seq_length, from_block_size,
     else:
         raise NotImplementedError
     rand_attn = np.stack(rand_attn, axis=0)
-    return tf.constant(rand_attn, dtype=tf.int32)
+    return rand_attn
 
 """
 def bigbird_layout(from_seq_length, to_seq_length, from_block_size, 
@@ -100,10 +107,8 @@ def bigbird_layout(from_seq_length, to_seq_length, from_block_size,
 def bigbird_callback():
     def mask_in_each_blocksparse_block(blk_shape, head_idx, q_idx, k_idx, blk_idx, 
                                         from_block_size, to_block_size):
-        """
-        given the bigbird attention patterns with from/to block size,
-        compute mask for each blocksparse block 
-        """
+        #given the bigbird attention patterns with from/to block size,
+        #compute mask for each blocksparse block 
         raise NotImplementedError
     return mask_in_each_blocksparse_block
 """
@@ -121,29 +126,31 @@ def bigbird_layout_simple(rand_attn):
                 layout[i,0] = 1
                 layout[i,-1] = 1
                 layout[i, i-1:i+1] = 1 
-                for r in rand_attn[h, i+1, :]:
-                    layout[i, r] = 1
+                #for r in rand_attn[h, i+1, :]:
+                for idx in range(rand_attn.shape[2]):
+                  layout[i, rand_attn[h, i-1, idx]] = 1
         layouts.append(layout)
     layouts = np.array(layouts)
+    return layouts
 
 
 def bigbird_callback_simple():
-    def mask_in_each_blocksparse_block(blk_shape):
+    def mask_in_each_blocksparse_block(blk_shape, head_idx, qry_idx, key_idx, blk_idx):
         mask = np.ones(blk_shape, dtype=np.bool)
         return mask
     return mask_in_each_blocksparse_block
 
-batch_size = 16
+batch_size = 32
 num_attention_heads = 1
 size_per_head = 512
-from_seq_length = 1024
-to_seq_length = 1024
+from_seq_length = 4096
+to_seq_length = 4096
 
 num_rand_blocks = 3
-from_block_size = 32
-to_block_size = 32
+from_block_size = 8
+to_block_size = 8
 
-blocksparse_bs = 32
+blocksparse_bs = 8
 
 if __name__ == '__main__':
 
@@ -163,11 +170,17 @@ if __name__ == '__main__':
     rand_attn = generate_rand_attn_list(from_seq_length, from_block_size,
          to_block_size, num_rand_blocks, num_attention_heads)
 
-    #layout = bigbird_layout(from_seq_length, to_seq_length, from_block_size, to_block_size, num_rand_blocks, num_attention_heads, blocksparse_bs)
-    layout = bigbird_layout_simple(rand_attn, blocksparse_bs)
+    # basically, we just need to prepare the blk_layout and the mask callback for each blk, 
+    # then init a BlocksparseTransformer object which provide compute ops that related to 
+    # the sparse pattern specficed by the layout and mask. 
+
+    # layout = bigbird_layout(from_seq_length, to_seq_length, from_block_size, to_block_size, num_rand_blocks, num_attention_heads, blocksparse_bs)
+    # for simple version, attention blocksize == compute blocksize(blocksparse size), 
+    # we can get block layout from rand_attn directly.
+    layout = bigbird_layout_simple(rand_attn)
 
     bst = BlocksparseTransformer(layout, block_size = blocksparse_bs, 
-                                            mask_callback=bigbird_callback_simple(),
+                                            mask_callback=bigbird_callback_simple(),# a callback that allways return ones(blk_shape, int32)
                                             heads = num_attention_heads)
 
     res = []

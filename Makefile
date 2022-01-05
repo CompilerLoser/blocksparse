@@ -21,14 +21,16 @@ release: compile
 	twine upload $(shell ls -th dist/*.whl | head -1)
 
 CUDA_HOME?=/usr/local/cuda
+#CUDA_HOME?=/home/v-weifanghu/soft/cuda-9.0
 NV_INC?=$(CUDA_HOME)/include
 NV_LIB?=$(CUDA_HOME)/lib64
 
-NCCL_HOME?=/usr/local/nccl
+NCCL_HOME?=/home/v-weifanghu/soft/nccl_build
 NCCL_INC?=$(NCCL_HOME)/include
 NCCL_LIB?=$(NCCL_HOME)/lib
 
-MPI_HOME?=/usr/lib/mpich
+#MPI_HOME?=/usr/lib/mpich
+MPI_HOME?=/usr/mpi/gcc/openmpi-4.0.3rc4
 MPI_INC?=$(MPI_HOME)/include
 MPI_LIB?=$(MPI_HOME)/lib
 
@@ -36,7 +38,8 @@ TF_INC=$(shell python -c 'from os.path import dirname; import tensorflow as tf; 
 TF_LIB=$(shell python -c 'import tensorflow as tf; print(tf.sysconfig.get_lib())')
 TF_ABI=$(shell python -c 'import tensorflow as tf; print(tf.__cxx11_abi_flag__ if "__cxx11_abi_flag__" in tf.__dict__ else 0)')
 
-CCFLAGS=-std=c++11 -O3 -fPIC -DGOOGLE_CUDA=1 -D_GLIBCXX_USE_CXX11_ABI=$(TF_ABI) \
+CCFLAGS=-std=c++11 -O3 -fPIC -DGOOGLE_CUDA=1 -D_GLIBCXX_USE_CXX11_ABI=1 \
+	-Wl,--no-as-needed \
 	-I$(TARGET) \
 	-I$(NV_INC) \
 	-I$(TF_INC)/tensorflow/include \
@@ -44,16 +47,16 @@ CCFLAGS=-std=c++11 -O3 -fPIC -DGOOGLE_CUDA=1 -D_GLIBCXX_USE_CXX11_ABI=$(TF_ABI) 
 	-I$(TF_INC)/external/local_config_cuda/cuda \
 	-I$(NCCL_INC) \
 	-I$(MPI_INC) \
-	-I/usr/local
+	-I/usr/local \
 
-NVCCFLAGS=-DGOOGLE_CUDA=1 -D_GLIBCXX_USE_CXX11_ABI=$(TF_ABI) -O3 -Xcompiler -fPIC -std=c++11 --prec-div=false --prec-sqrt=false \
+NVCCFLAGS=-DGOOGLE_CUDA=1 -D_GLIBCXX_USE_CXX11_ABI=1 -O3 -Xcompiler -fPIC -std=c++11 --prec-div=false --prec-sqrt=false \
  	-gencode=arch=compute_35,code=sm_35 \
 	-gencode=arch=compute_50,code=sm_50 \
 	-gencode=arch=compute_52,code=sm_52 \
  	-gencode=arch=compute_60,code=sm_60 \
 	-gencode=arch=compute_61,code=sm_61 \
  	-gencode=arch=compute_70,code=sm_70 \
- 	-gencode=arch=compute_70,code=compute_70
+ 	-gencode=arch=compute_75,code=compute_75 
 #   --keep --keep-dir tmp
 
 OBJS=\
@@ -73,8 +76,9 @@ OBJS=\
 	$(TARGET)/quantize_op.o \
 	$(TARGET)/transformer_op.o \
 	$(TARGET)/embedding_op.o \
-	$(TARGET)/matmul_op.o \
-	$(TARGET)/nccl_op.o
+	$(TARGET)/nccl_op.o \
+	$(TARGET)/matmul_op.o 
+
 
 CU_OBJS=\
 	$(TARGET)/batch_norm_op_gpu.cu.o \
@@ -103,7 +107,7 @@ $(TARGET)/blocksparse_kernels.h: src/sass/*.sass
 	python generate_kernels.py
 
 blocksparse/blocksparse_ops.so: $(OBJS) $(CU_OBJS)
-	g++ $^ -shared -o $@ -L$(TF_LIB) -L$(NV_LIB) -ltensorflow_framework -lcudart -lcuda -L$(NCCL_LIB) -L$(MPI_LIB) -lnccl -lmpi
+	/home/v-weifanghu/soft/gcc-5.4-install/bin/g++ $^ -shared -o $@ -L$(TF_LIB) -L$(NV_LIB) -ltensorflow_framework -lcudart -lcuda -L$(NCCL_LIB) -L$(MPI_LIB) -lnccl -lmpi
 
 $(TARGET)/%.cu.o: src/%.cu $(TARGET)/blocksparse_kernels.h
 	mkdir -p $(shell dirname $@)
@@ -111,7 +115,7 @@ $(TARGET)/%.cu.o: src/%.cu $(TARGET)/blocksparse_kernels.h
 
 $(TARGET)/%.o: src/%.cc src/*.h $(TARGET)/blocksparse_kernels.h
 	mkdir -p $(shell dirname $@)
-	g++ $(CCFLAGS) -c $< -o $@
+	/home/v-weifanghu/soft/gcc-5.4-install/bin/g++  $(CCFLAGS) -c $< -o $@
 
 
 # bazel-0.17.1-installer-linux-x86_64.sh (--user)

@@ -258,12 +258,12 @@ __global__ void __launch_bounds__(256) hmma_gemm_64x64x32_TN_vec8(float* U, cons
                 *(uint2*)&fragC[i].x[j*4] = *(uint2*)&hShare[readCs + i*16 + j*4*80];
                 *(uint2*)&fragK[i].x[j*4] = *(uint2*)&hShare[readKs + i*16 + j*4*80];
             }
-
+            /*
         mma_sync(fragU[0][0], fragC[0], fragK[0], fragU[0][0], false);
         mma_sync(fragU[1][0], fragC[1], fragK[0], fragU[1][0], false);
         mma_sync(fragU[1][1], fragC[1], fragK[1], fragU[1][1], false);
         mma_sync(fragU[0][1], fragC[0], fragK[1], fragU[0][1], false);
-
+        */
     } while (n < N);
 
     asm volatile ("mov.u32 %0, %tid.x;"   : "=r"(tid  ) :);
@@ -315,7 +315,8 @@ bool Gemm_TN(CUstream stream, uint SMs, int major,
 {
     cuMemsetD32Async((CUdeviceptr)u, 0, C*K, stream);
 
-    if (std::is_same<V, ehalf4>::value && major >= 7 && (C & 7) == 0 && (K & 7) == 0)
+    //if (std::is_same<V, ehalf4>::value && major >= 7 && (C & 7) == 0 && (K & 7) == 0)
+    if (false)
     {
         const ehalf8* X = (const ehalf8*)x;
         const ehalf8* E = (const ehalf8*)e;
