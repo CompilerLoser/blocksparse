@@ -1,10 +1,10 @@
 # Blocksparse
 
 ## Blocksparse installation in ubuntu18.04 and CUDA10
-The tensorflow and blocksparse installed through pip are always not compatible with each other, we need to build these two libraries by source code compilation. You need a fixed gcc compiler to compile them, and ensure that it is at least version 5 or higher, otherwise there will be some symbols in the compiled library that cannot be matched.
+The tensorflow and blocksparse installed through pip are always not compatible with each other, we need to build these two libraries by source. We need a fixed gcc compiler to compile them, and ensure that it is at least version 5 or higher, otherwise there may be some unmatched symbols in the compiled library.
 
 ### Compile tensorflow
-* Create a new env and make sure the python version is 3.6 to adapt to the tensorflow.
+* Create a new env and make sure the python version is 3.6.
 * Install bazel
 * `git clone https://github.com/tensorflow/tensorflow.git` and checkout to r1.13
 * `./configure` 
@@ -19,6 +19,7 @@ Before compile blocksparse, you need to:
 * `git clone https://github.com/openai/blocksparse.git`   
 
 * and change the Makefile as follows:
+    * set `-D_CLIBCXX_USE_CXX11_ABI=1` in `CCFLAGS` and `NVCCFLAG`
     * set `CUDA_HOME NCCL_HOME MPI_HOME`
     * add `-gencode=arch=compute_75,code=compute_75` to `NVCCFLAG` (specific to RTX 2080)
     * make sure use the same compiler with tensorflow. 
