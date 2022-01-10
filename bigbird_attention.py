@@ -140,21 +140,20 @@ def bigbird_callback_simple():
         return mask
     return mask_in_each_blocksparse_block
 
-batch_size = 32
+batch_size = 128
 num_attention_heads = 1
 size_per_head = 512
 from_seq_length = 4096
 to_seq_length = 4096
 
 num_rand_blocks = 3
-from_block_size = 8
-to_block_size = 8
+from_block_size = 32 
 
-blocksparse_bs = 8
+to_block_size = 32
+
+blocksparse_bs = 32 
 
 if __name__ == '__main__':
-
-    start = time.perf_counter()
     # simple version
     assert from_seq_length == to_seq_length
     assert from_block_size == to_block_size
@@ -167,29 +166,23 @@ if __name__ == '__main__':
     k = tf.random_normal(shape=[batch_size, num_attention_heads, to_seq_length, size_per_head], dtype = dtype)
     v = tf.random_normal(shape=[batch_size, num_attention_heads, to_seq_length, size_per_head], dtype = dtype)
 
+    start = time.perf_counter()
+
+  # basically, we just need to prepare the blk_layout and the mask callback for each blk, 
+  # then init a BlocksparseTransformer object which provide compute ops that related to 
+  # the sparse pattern specficed by the layout and mask. 
+
+  # layout = bigbird_layout(from_seq_length, to_seq_length, from_block_size, to_block_size, num_rand_blocks, num_attention_heads, blocksparse_bs)
+  # for simple version, attention blocksize == compute blocksize(blocksparse size), 
+  # we can get block layout from rand_attn directly.
+
+
+    # TODO: pack these into a function and run in tf.Session
     rand_attn = generate_rand_attn_list(from_seq_length, from_block_size,
-         to_block_size, num_rand_blocks, num_attention_heads)
-
-    # basically, we just need to prepare the blk_layout and the mask callback for each blk, 
-    # then init a BlocksparseTransformer object which provide compute ops that related to 
-    # the sparse pattern specficed by the layout and mask. 
-
-    # layout = bigbird_layout(from_seq_length, to_seq_length, from_block_size, to_block_size, num_rand_blocks, num_attention_heads, blocksparse_bs)
-    # for simple version, attention blocksize == compute blocksize(blocksparse size), 
-    # we can get block layout from rand_attn directly.
+       to_block_size, num_rand_blocks, num_attention_heads)
+    
     layout = bigbird_layout_simple(rand_attn)
 
     bst = BlocksparseTransformer(layout, block_size = blocksparse_bs, 
-                                            mask_callback=bigbird_callback_simple(),# a callback that allways return ones(blk_shape, int32)
-                                            heads = num_attention_heads)
-
-    res = []
-    for batch in range(q.shape[0]):
-        w = bst.query_key_op(q[batch,:], k[batch,:])
-        scale_amount = tf.cast(1.0 / np.sqrt(size_per_head), tf.float32)
-        w = bst.masked_softmax(w, scale_amount)
-        res.append(bst.weight_value_op(w, v[batch,:]))
-
-    end = time.perf_counter()
-    print(batch_size*num_attention_heads*from_seq_length / (end - start))
-
+                                          mask_callback=bigbird_callback_simple(),# a callback that allways return ones(blk_shape, int32)
+                                          heads = num_attention_heads)

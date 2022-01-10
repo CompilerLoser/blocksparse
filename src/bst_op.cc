@@ -240,7 +240,7 @@ class BlocksparseTransformerOp : public OpKernel {
       const float* b_ptr = (const float*)b.tensor_data().data();
             bhalf* c_ptr = (bhalf*)c->tensor_data().data();
 
-      OP_REQUIRES(ctx, blk_size_ == 32, errors::InvalidArgument("Only blocksize=32 supported for fp32 pathway."));
+      OP_REQUIRES(ctx, blk_size_ == 32, errors::InvalidArgument("Only blocksize=32 supported for fp32 pathway."));// ?
 
       for (int r = 0; r < repeat_; r++)
         bst_sgemm_nt(stream, l_ptr, a_ptr, b_ptr, c_ptr, blk_size_, blocks_, batch_dim, ctx_blks_a_, ctx_blks_b_, heads_, head_state_, lut_heads, lut_dim);
