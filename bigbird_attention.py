@@ -151,6 +151,18 @@ def bigbird_layout_simple(rand_attn):
 def bigbird_callback_simple():
     def mask_in_each_blocksparse_block(blk_shape, head_idx, qry_idx, key_idx, blk_idx):
         mask = np.ones(blk_shape, dtype=np.bool)
+        # a random mask for testing the execution efficency changes made by callback
+        if qry_idx != key_idx:
+          for q, k in np.ndindex(blk_shape):
+            if k>q:
+              mask[q,k] = 0
+        q_glb_idx = blk_shape[0]*qry_idx
+        k_glb_idx = blk_shape[1]*key_idx
+        for q, k in np.ndindex(blk_shape):
+          q_ = q+q_glb_idx
+          k_ = k+k_glb_idx
+          if k_ > q_ or k_ + 3 <= q_:
+            mask[q, k] = 0
         return mask
 
     return mask_in_each_blocksparse_block
@@ -203,6 +215,8 @@ to_block_size = 64
 blocksparse_bs = 64
 
 if __name__ == "__main__":
+    import os
+    os.environ["CUDA_VISIBLE_DEVICES"] = "2"
     # simple version
     assert from_seq_length == to_seq_length
     assert from_block_size == to_block_size
@@ -211,6 +225,7 @@ if __name__ == "__main__":
     is_fp16 = len(sys.argv) > 1 and sys.argv[1] == "fp16"
     dtype = tf.float16 if is_fp16 else tf.float32
 
+    
     q = tf.random_normal(
         shape=[batch_size, num_attention_heads, from_seq_length, size_per_head],
         dtype=dtype,
@@ -223,12 +238,12 @@ if __name__ == "__main__":
         shape=[batch_size, num_attention_heads, to_seq_length, size_per_head],
         dtype=dtype,
     )
-
-    sess = tf.Session()
+ 
+    sess = tf.Session(config=tf.ConfigProto(allow_soft_placement=False))
     attention_output, t_total, t_compute = bigbird_attention(q, k, v, num_attention_heads, from_seq_length, num_rand_blocks, size_per_head, blocksparse_bs, batch_size)
-
+ 
     res = sess.run([attention_output])
-
+ 
     print(t_total)
     print(t_compute)
 
