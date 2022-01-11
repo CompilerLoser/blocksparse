@@ -100,7 +100,7 @@ class BlocksparseTransformer(object):
             ys, xs, bs = sparse.find(csr) # xs is in sorted order by default
             if blocks is None:
                 blocks = len(bs)
-            else:
+            else:#### some times here are assert wrong, but i dont konw why > <, layout block numbers are 100% equal for all heads.
                 assert len(bs) == blocks, "number of layout blocks must be equal across heads"
 
             # make blocks contiguous along the rows (softmax code leverages this for increased performance)

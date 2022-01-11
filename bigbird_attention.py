@@ -151,7 +151,10 @@ def bigbird_layout_simple(rand_attn):
 def bigbird_callback_simple():
     def mask_in_each_blocksparse_block(blk_shape, head_idx, qry_idx, key_idx, blk_idx):
         mask = np.ones(blk_shape, dtype=np.bool)
-        # a random mask for testing the execution efficency changes made by callback
+        return mask
+    # a random mask for testing the execution efficency changes made by callback
+    def mask_in_each_blocksparse_block_test_efficency(blk_shape, head_idx, qry_idx, key_idx, blk_idx):
+        mask = np.ones(blk_shape, dtype=np.bool)
         if qry_idx != key_idx:
           for q, k in np.ndindex(blk_shape):
             if k>q:
@@ -166,6 +169,7 @@ def bigbird_callback_simple():
         return mask
 
     return mask_in_each_blocksparse_block
+    #return mask_in_each_blocksparse_block_test_efficency
 
 
 # basically, we just need to prepare the blk_layout and the mask callback for each blk,
@@ -177,7 +181,7 @@ def bigbird_callback_simple():
 def bigbird_attention(
     q, k, v, num_attention_heads, from_seq_length, num_rand_blocks, size_per_head, block_size, batch_size
 ):
-    attention_start=time.perf_counter()
+    attention_start = time.perf_counter()
     rand_attn = generate_rand_attn_list(
         from_seq_length, 
         block_size, 
@@ -204,15 +208,15 @@ def bigbird_attention(
     return all_batch, compute_end - attention_start, compute_end - compute_start
 
 
-batch_size = 128
-num_attention_heads = 1
+batch_size = 16
+num_attention_heads = 4
 size_per_head = 512
 from_seq_length = 4096
 to_seq_length = 4096
 num_rand_blocks = 3
-from_block_size = 64
-to_block_size = 64
-blocksparse_bs = 64
+from_block_size = 32
+to_block_size = 32
+blocksparse_bs = 32
 
 if __name__ == "__main__":
     import os
@@ -246,5 +250,5 @@ if __name__ == "__main__":
  
     print(t_total)
     print(t_compute)
-
-    print(batch_size*num_attention_heads*from_seq_length/(t_total))
+    print(t_compute/t_total*100)
+    print(batch_size*num_attention_heads*from_seq_length/(t_total)/1000)
