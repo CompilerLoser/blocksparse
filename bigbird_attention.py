@@ -182,6 +182,7 @@ def bigbird_attention(
     q, k, v, num_attention_heads, from_seq_length, num_rand_blocks, size_per_head, block_size, batch_size
 ):
     attention_start = time.perf_counter()
+    rand_attn_and_layout = time.perf_counter()
     rand_attn = generate_rand_attn_list(
         from_seq_length, 
         block_size, 
@@ -190,25 +191,41 @@ def bigbird_attention(
         num_attention_heads
     )
     layout = bigbird_layout_simple(rand_attn)
+    rand_attn_and_layout_e = time.perf_counter()
+    print("gen rand attn and gen layout")
+    print(rand_attn_and_layout_e - rand_attn_and_layout)
+    bst_init = time.perf_counter()
     bst = BlocksparseTransformer(
       layout,
       block_size=block_size,
       mask_callback=bigbird_callback_simple(),
       heads = num_attention_heads
     )
+    bst_init_e = time.perf_counter()
+    print("bst_init_e")
+    print(bst_init_e - bst_init)
     scale_amount = tf.cast(1.0 / np.sqrt(size_per_head), tf.float32)
     compute_start = time.perf_counter()
     all_batch = []
     for idx in range(batch_size):
+      dds = time.perf_counter()
       w = bst.query_key_op(q[idx], k[idx])
+      soft_max = time.perf_counter()
       w = bst.masked_softmax(w, scale_amount)
+      dsd = time.perf_counter()
       a = bst.weight_value_op(w, v[idx])
+      end = time.perf_counter()
       all_batch.append(a)
+    print("***")
+    print(soft_max - dds)
+    print(dsd - soft_max)
+    print(end - dsd)
     compute_end = time.perf_counter()
+    print("compute")
     return all_batch, compute_end - attention_start, compute_end - compute_start
 
 
-batch_size = 16
+batch_size = 64
 num_attention_heads = 4
 size_per_head = 512
 from_seq_length = 4096

@@ -8,6 +8,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.python.framework import ops
 from blocksparse.utils import _op_module, scalar_constant
+import time
 
 
 ############################## Blocksparse Transformer #####################################
@@ -59,7 +60,7 @@ class BlocksparseTransformer(object):
     #     self.__init__(*state)
 
     def __init__(self, layout, block_size=64, heads=None, mask_callback=None, name=None):
-
+        make_lut_s =  time.perf_counter()
         if len(layout.shape) == 2:
             assert heads is not None, "heads must be explicitly specified when using shared layouts per head"
             # broadcast same layout over all heads
@@ -121,16 +122,23 @@ class BlocksparseTransformer(object):
             self.nn_max = max(self.nn_max, nn_max)
             self.tn_max = max(self.tn_max, tn_max)
 
+
         self.blocks = blocks
         self.nt_lut = np.array(self.nt_lut, dtype=np.int32)
         self.nn_lut = np.array(self.nn_lut, dtype=np.int32)
         self.tn_lut = np.array(self.tn_lut, dtype=np.int32)
-
+        make_lut_e = time.perf_counter()
+        print("make_lut")
+        print(make_lut_e-make_lut_s)
+        init_soft_mask=time.perf_counter()
         if mask_callback is not None:
             self.init_softmax_mask(mask_callback)
         else:
             self.softmax_mask    = None
             self.softmax_mask_np = None
+        init_sot_mask_e = time.perf_counter()
+        print("init_soft_mask")
+        print(init_sot_mask_e-init_soft_mask)
 
     def init_softmax_mask(self, mask_callback):
 
