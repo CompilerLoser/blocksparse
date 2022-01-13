@@ -152,7 +152,7 @@ def bigbird_callback_simple():
     def mask_in_each_blocksparse_block(blk_shape, head_idx, qry_idx, key_idx, blk_idx):
         mask = np.ones(blk_shape, dtype=np.bool)
         return mask
-    # a random mask for testing the execution efficency changes made by callback
+    # a non-trival mask for testing the execution efficency changes made by callback
     def mask_in_each_blocksparse_block_test_efficency(blk_shape, head_idx, qry_idx, key_idx, blk_idx):
         mask = np.ones(blk_shape, dtype=np.bool)
         if qry_idx != key_idx:
@@ -197,7 +197,6 @@ def bigbird_attention(
       heads = num_attention_heads
     )
     scale_amount = tf.cast(1.0 / np.sqrt(size_per_head), tf.float32)
-    compute_start = time.perf_counter()
     all_batch = []
     for idx in range(batch_size):
       w = bst.query_key_op(q[idx], k[idx])
@@ -205,7 +204,7 @@ def bigbird_attention(
       a = bst.weight_value_op(w, v[idx])
       all_batch.append(a)
     compute_end = time.perf_counter()
-    return all_batch, compute_end - attention_start, compute_end - compute_start
+    return all_batch, compute_end - attention_start 
 
 
 batch_size = 16
@@ -244,11 +243,9 @@ if __name__ == "__main__":
     )
  
     sess = tf.Session(config=tf.ConfigProto(allow_soft_placement=False))
-    attention_output, t_total, t_compute = bigbird_attention(q, k, v, num_attention_heads, from_seq_length, num_rand_blocks, size_per_head, blocksparse_bs, batch_size)
+    attention_output, t_total = bigbird_attention(q, k, v, num_attention_heads, from_seq_length, num_rand_blocks, size_per_head, blocksparse_bs, batch_size)
  
     res = sess.run([attention_output])
  
     print(t_total)
-    print(t_compute)
-    print(t_compute/t_total*100)
     print(batch_size*num_attention_heads*from_seq_length/(t_total)/1000)
