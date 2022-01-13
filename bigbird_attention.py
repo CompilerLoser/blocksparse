@@ -181,7 +181,7 @@ def bigbird_callback_simple():
 def bigbird_attention(
     q, k, v, num_attention_heads, from_seq_length, num_rand_blocks, size_per_head, block_size, batch_size
 ):
-    attention_start = time.perf_counter()
+    __gen_rand_attn = time.perf_counter()
     rand_attn = generate_rand_attn_list(
         from_seq_length, 
         block_size, 
@@ -189,7 +189,9 @@ def bigbird_attention(
         num_rand_blocks, 
         num_attention_heads
     )
+    __gen_layout = time.perf_counter()
     layout = bigbird_layout_simple(rand_attn)
+    __init_bst_and_gen_mask = time.perf_counter()
     bst = BlocksparseTransformer(
       layout,
       block_size=block_size,
@@ -198,13 +200,17 @@ def bigbird_attention(
     )
     scale_amount = tf.cast(1.0 / np.sqrt(size_per_head), tf.float32)
     all_batch = []
+    __compute_start = time.perf_counter()
     for idx in range(batch_size):
       w = bst.query_key_op(q[idx], k[idx])
       w = bst.masked_softmax(w, scale_amount)
       a = bst.weight_value_op(w, v[idx])
       all_batch.append(a)
-    compute_end = time.perf_counter()
-    return all_batch, compute_end - attention_start 
+    __compute_end = time.perf_counter()
+    print("generate rand attention positions ", __gen_layout - __gen_rand_attn)
+    print("generate layout ", __init_bst_and_gen_mask - __gen_layout)
+    print("init bst and gen mask for each block ", __compute_start - __init_bst_and_gen_mask)
+    return all_batch, __compute_end - __gen_rand_attn 
 
 
 batch_size = 16
