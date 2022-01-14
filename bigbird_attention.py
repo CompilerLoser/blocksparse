@@ -202,22 +202,29 @@ def bigbird_attention(
     all_batch = []
     __compute_start = time.perf_counter()
     for idx in range(batch_size):
+      
       w = bst.query_key_op(q[idx], k[idx])
+      s1 = time.perf_counter()
       w = bst.masked_softmax(w, scale_amount)
+      s2 = time.perf_counter()
       a = bst.weight_value_op(w, v[idx])
+      s3 = time.perf_counter()
       all_batch.append(a)
     __compute_end = time.perf_counter()
     print("generate rand attention positions ", __gen_layout - __gen_rand_attn)
     print("generate layout ", __init_bst_and_gen_mask - __gen_layout)
     print("init bst and gen mask for each block ", __compute_start - __init_bst_and_gen_mask)
+    print(s1 - __compute_start)
+    print(s2 - s1)
+    print(s3 - s2)
     return all_batch, __compute_end - __gen_rand_attn 
 
 
-batch_size = 16
+batch_size = 1
 num_attention_heads = 4
 size_per_head = 512
-from_seq_length = 4096
-to_seq_length = 4096
+from_seq_length = 1024
+to_seq_length = 1024
 num_rand_blocks = 3
 from_block_size = 32
 to_block_size = 32
