@@ -4,6 +4,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import time
 import numpy as np
 import tensorflow as tf
 from tensorflow.python.framework import ops
@@ -126,11 +127,13 @@ class BlocksparseTransformer(object):
         self.nn_lut = np.array(self.nn_lut, dtype=np.int32)
         self.tn_lut = np.array(self.tn_lut, dtype=np.int32)
 
+        t = time.perf_counter()
         if mask_callback is not None:
             self.init_softmax_mask(mask_callback)
         else:
             self.softmax_mask    = None
             self.softmax_mask_np = None
+        print("mask", time.perf_counter() - t)
 
     def init_softmax_mask(self, mask_callback):
 
