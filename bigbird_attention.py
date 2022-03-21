@@ -10,7 +10,7 @@ import tensorflow as tf
 import time
 
 from blocksparse.transformer import BlocksparseTransformer
-
+from tensorflow.python.client import timeline
 
 def bigbird_block_rand_mask(
     from_seq_length,
@@ -199,32 +199,22 @@ def bigbird_attention(
       heads = num_attention_heads
     )
     scale_amount = tf.cast(1.0 / np.sqrt(size_per_head), tf.float32)
-    all_batch = []
     __compute_start = time.perf_counter()
-    for idx in range(batch_size):
-      
-      w = bst.query_key_op(q[idx], k[idx])
-      s1 = time.perf_counter()
-      w = bst.masked_softmax(w, scale_amount)
-      s2 = time.perf_counter()
-      a = bst.weight_value_op(w, v[idx])
-      s3 = time.perf_counter()
-      all_batch.append(a)
+    w = bst.query_key_op(q, k)
+    w = bst.masked_softmax(w, scale_amount)
+    a = bst.weight_value_op(w, v)
     __compute_end = time.perf_counter()
     print("generate rand attention positions ", __gen_layout - __gen_rand_attn)
     print("generate layout ", __init_bst_and_gen_mask - __gen_layout)
     print("init bst and gen mask for each block ", __compute_start - __init_bst_and_gen_mask)
-    print(s1 - __compute_start)
-    print(s2 - s1)
-    print(s3 - s2)
-    return all_batch, __compute_end - __gen_rand_attn 
+    return a, __compute_end - __gen_rand_attn 
 
 
-batch_size = 1
-num_attention_heads = 4
+batch_size = 256 
+num_attention_heads = 1
 size_per_head = 512
-from_seq_length = 1024
-to_seq_length = 1024
+from_seq_length = 4096
+to_seq_length = 4096
 num_rand_blocks = 3
 from_block_size = 32
 to_block_size = 32
@@ -238,27 +228,30 @@ if __name__ == "__main__":
     assert from_block_size == to_block_size
     assert blocksparse_bs == from_block_size
 
-    is_fp16 = len(sys.argv) > 1 and sys.argv[1] == "fp16"
-    dtype = tf.float16 if is_fp16 else tf.float32
+    dtype = tf.float32
 
-    
+
+    state = num_attention_heads*size_per_head 
     q = tf.random_normal(
-        shape=[batch_size, num_attention_heads, from_seq_length, size_per_head],
+        shape =[batch_size, from_seq_length, state],
         dtype=dtype,
     )
     k = tf.random_normal(
-        shape=[batch_size, num_attention_heads, to_seq_length, size_per_head],
+        shape =[batch_size, from_seq_length, state],
         dtype=dtype,
     )
     v = tf.random_normal(
-        shape=[batch_size, num_attention_heads, to_seq_length, size_per_head],
+        shape =[batch_size, from_seq_length, state],
         dtype=dtype,
     )
  
     sess = tf.Session(config=tf.ConfigProto(allow_soft_placement=False))
     attention_output, t_total = bigbird_attention(q, k, v, num_attention_heads, from_seq_length, num_rand_blocks, size_per_head, blocksparse_bs, batch_size)
- 
+    options = tf.RunOptions(trace_level = tf.RunOptions.FULL_TRACE)
+    run_metadata = tf.RunMetadata()
     res = sess.run([attention_output])
+    fetched_timeline = timeline.Timeline(run_metadata.step_stats)
+    chrome_trace = fetched_timeline.generate_chrome_trace_format()
+    with open('timeline_01.json', 'w') as f:
+        f.write(chrome_trace)
  
-    print(t_total)
-    print(batch_size*num_attention_heads*from_seq_length/(t_total)/1000)
